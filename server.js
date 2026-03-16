@@ -332,7 +332,47 @@ app.all("*", async (req, res) => {
   try {
     const proxyDomain = getProxyDomain(req);
     const proxyOrigin = getProxyOrigin(req);
-    const targetUrl = `${TARGET_PROTOCOL}://${TARGET_HOST}${req.originalUrl}`;
+
+    // --- Rewrite query string: replace proxy domain back to target domain ---
+    // This is critical for OAuth/OIDC flows where redirect_uri, return_url, etc.
+    // must point to the original domain, not the proxy domain
+    let upstreamPath = req.originalUrl;
+    if (proxyDomain && upstreamPath.includes(proxyDomain)) {
+      upstreamPath = upstreamPath.replace(
+        new RegExp(escapeRegex(proxyDomain), "gi"),
+        TARGET_HOST
+      );
+    }
+    // Also handle URL-encoded variants of the proxy domain in query strings
+    // e.g. redirect_uri=https%3A%2F%2Fcoretaxdjp.net%2F...
+    const proxyDomainEncoded = encodeURIComponent(proxyDomain);
+    const targetHostEncoded = encodeURIComponent(TARGET_HOST);
+    if (upstreamPath.includes(proxyDomainEncoded)) {
+      upstreamPath = upstreamPath.replace(
+        new RegExp(escapeRegex(proxyDomainEncoded), "gi"),
+        targetHostEncoded
+      );
+    }
+    // Handle double-encoded variants
+    const proxyDomainDoubleEncoded = encodeURIComponent(proxyDomainEncoded);
+    const targetHostDoubleEncoded = encodeURIComponent(targetHostEncoded);
+    if (upstreamPath.includes(proxyDomainDoubleEncoded)) {
+      upstreamPath = upstreamPath.replace(
+        new RegExp(escapeRegex(proxyDomainDoubleEncoded), "gi"),
+        targetHostDoubleEncoded
+      );
+    }
+    // Replace protocol+domain in query string (both plain and encoded)
+    upstreamPath = upstreamPath.replace(
+      new RegExp(escapeRegex(`https://${proxyDomain}`), "gi"),
+      `${TARGET_PROTOCOL}://${TARGET_HOST}`
+    );
+    upstreamPath = upstreamPath.replace(
+      new RegExp(escapeRegex(`http://${proxyDomain}`), "gi"),
+      `${TARGET_PROTOCOL}://${TARGET_HOST}`
+    );
+
+    const targetUrl = `${TARGET_PROTOCOL}://${TARGET_HOST}${upstreamPath}`;
 
     // --- Build upstream request headers ---
     const upstreamHeaders = {};
@@ -360,10 +400,10 @@ app.all("*", async (req, res) => {
 
     // Rewrite Referer/Origin headers
     if (upstreamHeaders["referer"]) {
-      upstreamHeaders["referer"] = upstreamHeaders["referer"].replace(
-        new RegExp(escapeRegex(proxyDomain), "gi"),
-        TARGET_HOST
-      );
+      upstreamHeaders["referer"] = upstreamHeaders["referer"]
+        .replace(new RegExp(`https?://${escapeRegex(proxyDomain)}`, "gi"), `${TARGET_PROTOCOL}://${TARGET_HOST}`)
+        .replace(new RegExp(escapeRegex(proxyDomain), "gi"), TARGET_HOST)
+        .replace(new RegExp(escapeRegex(proxyDomainEncoded), "gi"), targetHostEncoded);
     }
     if (upstreamHeaders["origin"]) {
       upstreamHeaders["origin"] = `${TARGET_PROTOCOL}://${TARGET_HOST}`;
@@ -381,11 +421,25 @@ app.all("*", async (req, res) => {
 
       // Rewrite body if it's form data containing our proxy domain
       if (body.length > 0) {
-        const bodyStr = body.toString("utf-8");
+        let bodyStr = body.toString("utf-8");
+        let bodyChanged = false;
+        // Plain domain
         if (bodyStr.includes(proxyDomain)) {
-          body = Buffer.from(
-            bodyStr.replace(new RegExp(escapeRegex(proxyDomain), "gi"), TARGET_HOST)
-          );
+          bodyStr = bodyStr.replace(new RegExp(escapeRegex(proxyDomain), "gi"), TARGET_HOST);
+          bodyChanged = true;
+        }
+        // URL-encoded domain
+        if (bodyStr.includes(proxyDomainEncoded)) {
+          bodyStr = bodyStr.replace(new RegExp(escapeRegex(proxyDomainEncoded), "gi"), targetHostEncoded);
+          bodyChanged = true;
+        }
+        // Protocol+domain
+        if (bodyStr.includes(`https://${proxyDomain}`) || bodyStr.includes(`http://${proxyDomain}`)) {
+          bodyStr = bodyStr.replace(new RegExp(`https?://${escapeRegex(proxyDomain)}`, "gi"), `${TARGET_PROTOCOL}://${TARGET_HOST}`);
+          bodyChanged = true;
+        }
+        if (bodyChanged) {
+          body = Buffer.from(bodyStr);
           upstreamHeaders["content-length"] = body.length.toString();
         }
       }
