@@ -1,0 +1,27 @@
+# Fly.io configuration
+# Deploy: fly launch && fly deploy
+# Set domain: fly certs add yourdomain.com
+
+app = "coretaxdjp-mirror"
+primary_region = "sin"  # Singapore - closest to Indonesia
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[env]
+  PORT = "3000"
+  TARGET_HOST = "coretaxdjp.pajak.go.id"
+  TARGET_PROTOCOL = "https"
+  # YOUR_DOMAIN = "yourdomain.com"  # Set your actual domain here
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

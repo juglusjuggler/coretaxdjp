@@ -1,0 +1,19 @@
+# Render configuration
+# Deploy: connect GitHub repo to Render dashboard
+
+services:
+  - type: web
+    name: coretaxdjp-mirror
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: free
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: TARGET_HOST
+        value: coretaxdjp.pajak.go.id
+      - key: TARGET_PROTOCOL
+        value: https
+      # - key: YOUR_DOMAIN
+      #   value: yourdomain.com
