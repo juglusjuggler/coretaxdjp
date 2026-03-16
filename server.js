@@ -85,6 +85,10 @@ function rewriteHTML(html, req) {
   $('meta[name="robots"]').remove();
   $("head").append('<meta name="robots" content="index, follow" />');
 
+  // --- 2b. Add Google Search Console verification ---
+  $('meta[name="google-site-verification"]').remove();
+  $("head").append('<meta name="google-site-verification" content="qgS7BRMlio-RrPmG8wYOUhKB_hSI1u5ilmn_w28fZog" />');
+
   // --- 3. Rewrite Open Graph / Twitter meta tags ---
   $('meta[property="og:url"]').attr("content", canonicalUrl);
   $('meta[name="twitter:url"]').attr("content", canonicalUrl);
